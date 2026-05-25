@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Seu Delivery</title>
+    <style>
+      body {font-family: Arial, sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1rem; color:#2c3e50;}
+      h1, h2 {margin-bottom: 0.5rem;}
+      .card {background:#fff;padding:1.5rem;border-radius:10px;box-shadow:0 8px 25px rgba(0,0,0,0.08);margin-bottom:1.5rem;}
+      label {display:block;margin-top:1rem;font-weight:600;}
+      input, select {width:100%;padding:0.85rem;margin-top:0.4rem;border:1px solid #d1d5db;border-radius:8px;}
+      button {margin-top:1.25rem;padding:0.95rem 1.5rem;background:#2d9b6a;color:#fff;border:none;border-radius:8px;cursor:pointer;transition:background .2s;}
+      button:hover {background:#248455;}
+      .grid {display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+      .grid-3 {display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;}
+      .menu-item {border:1px solid #e5e7eb;border-radius:10px;padding:1rem;cursor:pointer;transition:border-color .2s,transform .2s;}
+      .menu-item:hover {border-color:#2d9b6a;transform:translateY(-2px);}
+      .menu-item.active {border-color:#2d9b6a;background:#f0fbf5;}
+      .menu-item h3 {margin:0 0 0.5rem 0;}
+      .menu-item p {margin:0.4rem 0;}
+      .badge {display:inline-block;padding:0.2rem 0.5rem;background:#f3f4f6;border-radius:999px;font-size:0.8rem;}
+      .summary {margin-top:1rem;padding:1rem;background:#f8fafc;border-radius:10px;}
+      .message {padding:1rem;border-radius:10px;margin-top:1rem;}
+      .message.success {background:#ecfdf5;color:#166534;}
+      .message.error {background:#fee2e2;color:#991b1b;}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Faça seu pedido</h1>
+      <p>Site de vendas privado, com entrega, retirada e pagamento por cartão, dinheiro ou Pix.</p>
+    </div>
+
+    <div class="card">
+      <h2>1. Escolha seus itens</h2>
+      <div id="cardapio" class="grid"></div>
+    </div>
+
+    <div class="card">
+      <h2>2. Dados do pedido</h2>
+      <div class="grid">
+        <div>
+          <label>Nome do cliente</label>
+          <input id="cliente" placeholder="Ex: Maria" />
+        </div>
+        <div>
+          <label>Telefone</label>
+          <input id="telefone" placeholder="(11) 99999-9999" />
+        </div>
+      </div>
+      <div class="grid">
+        <div>
+          <label>Tipo de pedido</label>
+          <select id="tipoPedido">
+            <option value="ENTREGA">Entrega</option>
+            <option value="RETIRADA">Retirada</option>
+          </select>
+        </div>
+        <div>
+          <label>Forma de pagamento</label>
+          <select id="formaPagamento" onchange="atualizarTela()">
+            <option value="PIX">Pix</option>
+            <option value="CARTAO">Cartão</option>
+            <option value="DINHEIRO">Dinheiro</option>
+          </select>
+        </div>
+      </div>
+      <div id="enderecoContainer">
+        <label>Endereço de entrega</label>
+        <input id="endereco" placeholder="Rua Exemplo, 123" />
+      </div>
+      <div id="trocoContainer" style="display:none;">
+        <label>Deseja troco?</label>
+        <select id="trocoSolicitado" onchange="atualizarTroco()">
+          <option value="false">Não</option>
+          <option value="true">Sim</option>
+        </select>
+      </div>
+      <div id="valorTrocoContainer" style="display:none;">
+        <label>Valor para troco</label>
+        <input id="trocoPara" type="number" step="0.01" placeholder="100.00" />
+      </div>
+      <div id="referenciaContainer">
+        <label>Referência de pagamento (Pix/Cartão)</label>
+        <input id="referencia" placeholder="Ex: PIX123456" />
+      </div>
+      <div class="summary">
+        <h3>Resumo do pedido</h3>
+        <p><strong>Itens selecionados:</strong> <span id="itensSelecionados">Nenhum item</span></p>
+        <p><strong>Total estimado:</strong> R$ <span id="valorTotal">0.00</span></p>
+      </div>
+      <button onclick="enviarPedido()">Enviar pedido</button>
+      <div id="mensagem"></div>
+    </div>
+
+    <script>
+      let menu = [];
+      let carrinho = [];
+
+      async function carregarCardapio() {
+        const res = await fetch('/api/cardapio');
+        menu = await res.json();
+        const container = document.getElementById('cardapio');
+        container.innerHTML = menu.map(item => {
+          return `<div class="menu-item" data-id="${item.id}" onclick="toggleItem(${item.id})">
+            <h3>${item.nome}</h3>
+            <p>${item.descricao || ''}</p>
+            <p><strong>R$ ${Number(item.preco).toFixed(2)}</strong></p>
+            <p class="badge">Clique para adicionar</p>
+          </div>`;
+        }).join('');
+      }
+
+      function toggleItem(id) {
+        const item = menu.find(i => i.id === id);
+        if (!item) return;
+        const existente = carrinho.find(i => i.itemId === id);
+        if (existente) {
+          existente.quantidade += 1;
+        } else {
+          carrinho.push({ itemId: item.id, nome: item.nome, preco: item.preco, quantidade: 1 });
+        }
+        atualizarResumo();
+      }
+
+      function atualizarResumo() {
+        const texto = carrinho.length === 0
+          ? 'Nenhum item'
+          : carrinho.map(i => `${i.quantidade}x ${i.nome}`).join(', ');
+        document.getElementById('itensSelecionados').textContent = texto;
+        const total = carrinho.reduce((sum, item) => sum + (item.preco * item.quantidade), 0);
+        document.getElementById('valorTotal').textContent = total.toFixed(2);
+      }
+
+      function atualizarTela() {
+        const pagamento = document.getElementById('formaPagamento').value;
+        document.getElementById('trocoContainer').style.display = pagamento === 'DINHEIRO' ? 'block' : 'none';
+        document.getElementById('referenciaContainer').style.display = pagamento === 'DINHEIRO' ? 'none' : 'block';
+        atualizarTroco();
+      }
+
+      function atualizarTroco() {
+        const troco = document.getElementById('trocoSolicitado').value === 'true';
+        document.getElementById('valorTrocoContainer').style.display = troco ? 'block' : 'none';
+      }
+
+      async function enviarPedido() {
+        const cliente = document.getElementById('cliente').value.trim();
+        const telefone = document.getElementById('telefone').value.trim();
+        const tipo = document.getElementById('tipoPedido').value;
+        const endereco = document.getElementById('endereco').value.trim();
+        const formaPagamento = document.getElementById('formaPagamento').value;
+        const trocoSolicitado = document.getElementById('trocoSolicitado').value === 'true';
+        const trocoPara = parseFloat(document.getElementById('trocoPara').value || '0');
+        const referencia = document.getElementById('referencia').value.trim();
+
+        if (!cliente || !telefone || carrinho.length === 0) {
+          return mostrarMensagem('Preencha nome, telefone e escolha pelo menos um item.', 'error');
+        }
+
+        if (tipo === 'ENTREGA' && !endereco) {
+          return mostrarMensagem('Informe o endereço de entrega.', 'error');
+        }
+
+        if (formaPagamento !== 'DINHEIRO' && !referencia) {
+          return mostrarMensagem('Informe a referência de pagamento.', 'error');
+        }
+
+        const total = carrinho.reduce((sum, item) => sum + (item.preco * item.quantidade), 0);
+        const payload = {
+          cliente,
+          telefone,
+          tipo,
+          endereco: tipo === 'ENTREGA' ? endereco : null,
+          formaPagamento,
+          trocoSolicitado,
+          trocoPara: trocoSolicitado ? trocoPara : null,
+          pagamentoReferencia: referencia || null,
+          itens: carrinho,
+          total
+        };
+
+        const res = await fetch('/api/pedidos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          carrinho = [];
+          atualizarResumo();
+          mostrarMensagem(`Pedido enviado com sucesso! Nº ${data.id}`, 'success');
+          document.getElementById('cliente').value = '';
+          document.getElementById('telefone').value = '';
+          document.getElementById('endereco').value = '';
+          document.getElementById('referencia').value = '';
+          document.getElementById('trocoPara').value = '';
+        } else {
+          mostrarMensagem(data || 'Não foi possível criar o pedido.', 'error');
+        }
+      }
+
+      function mostrarMensagem(texto, tipo) {
+        const container = document.getElementById('mensagem');
+        container.innerHTML = `<div class="message ${tipo}">${texto}</div>`;
+      }
+
+      carregarCardapio();
+      atualizarTela();
+    </script>
+  </body>
+</html>

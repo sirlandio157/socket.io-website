@@ -33,10 +33,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+    // PasswordEncoder moved to separate configuration to avoid circular dependency
 
     @Bean
     public UserDetailsService userDetailsService() {
